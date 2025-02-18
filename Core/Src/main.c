@@ -1432,6 +1432,7 @@ void StartAdcTask(void *argument)
 			cycle_count = 0;
 		}
 
+		#if 0
 		pot_ativa1 = m_udtEnergyDataCalcs.pot_ativa;
 		pot_aparente1 = m_udtEnergyDataCalcs.pot_aparente;
 		pot_reativa1 = m_udtEnergyDataCalcs.pot_reativa;
@@ -1439,7 +1440,15 @@ void StartAdcTask(void *argument)
 		rms_current1 = m_udtEnergyDataCalcs.rms_current;
 		pf1 = m_udtEnergyDataCalcs.pf;
 		consumption1 = m_udtEnergyDataCalcs.consumption;
-
+		#else
+		m_udtEnergyDataCalcs.pot_ativa = 900;
+		m_udtEnergyDataCalcs.pot_aparente = 1000;
+		m_udtEnergyDataCalcs.pot_reativa = 100;
+		m_udtEnergyDataCalcs.rms_voltage = 127;
+		m_udtEnergyDataCalcs.rms_current = 78;
+		m_udtEnergyDataCalcs.pf = 90;
+		m_udtEnergyDataCalcs.consumption = 100;
+		#endif
 
 
 
