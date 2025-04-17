@@ -81,7 +81,7 @@ typedef enum UART_OPCODES
 
 }UART_OPCODES;
 
-typedef struct ENERGY_DATA
+typedef struct _ENERGY_DATA
 {
 	int32_t rms_current;
 	int32_t rms_voltage;
@@ -95,11 +95,11 @@ typedef struct ENERGY_DATA
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define V1_SENSOR_MULT	0.000837696335//0.996551//Encontra a tensão da Saída do Sensor x100
-#define V1_REAL_MULT 	789.1033381//808.1496160//63.37024//Encontra a tensão de entrada do Sensor  x100
+#define V1_SENSOR_MULT	0.000837696335f//0.996551//Encontra a tensão da Saída do Sensor x100
+#define V1_REAL_MULT 	789.1033381f//808.1496160//63.37024//Encontra a tensão de entrada do Sensor  x100
 
-#define C2_SENSOR_MULT	0.000878232758//0.362903//Encontra a tensão da Saída do Sensor x100
-#define C2_REAL_MULT	23.10292756//5.4691//Encontra a Corrente de entrada do Sensor  x100
+#define C2_SENSOR_MULT	0.000878232758f//0.362903//Encontra a tensão da Saída do Sensor x100
+#define C2_REAL_MULT	23.10292756f//5.4691//Encontra a Corrente de entrada do Sensor  x100
 
 #define F_BUFFER_SIZE	256
 #define H_BUFFER_SIZE	128
@@ -191,8 +191,8 @@ typedef union type_ {
 }uint32_16_t;
 
 uint32_16_t adcBuffer[F_BUFFER_SIZE];
-uint16_t 	adc1_voltage[H_BUFFER_SIZE];
-uint16_t 	adc2_current[H_BUFFER_SIZE];
+float 	adc1_voltage[H_BUFFER_SIZE];
+float 	adc2_current[H_BUFFER_SIZE];
 
 UART_MACHINE_STATES m_udtUartmachineStates;
 UART_PACKAGE_PARTS  m_udtUartPackageParts;
@@ -819,6 +819,9 @@ void UartMainProcess(unsigned char ucData)
           m_udtUartPackageParts = (UART_PACKAGE_PARTS)UPP_ETX;
         }
         break;
+        case UPP_STX:
+        case UPP_ETX:
+        	break;
       }
     }
     break;
@@ -1318,8 +1321,8 @@ void StartAdcTask(void *argument)
 	uint32_t accumulated_active_power = 0;
 	uint16_t cycle_count = 0;
 
-	uint32_t cc_voltage = 0;
-	uint32_t cc_current = 0;
+	float cc_voltage = 0;
+	float cc_current = 0;
 	uint8_t sidebuffer_choice = 0;
 	uint16_t i = 0;
 	uint16_t j = 0;
@@ -1327,7 +1330,7 @@ void StartAdcTask(void *argument)
 	ENERGY_DATA m_udtEnergyDataCalcs;
 	m_udtEnergyDataCalcs.consumption = 0;
 
-	HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adcBuffer, F_BUFFER_SIZE);
+	HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adcBuffer, F_BUFFER_SIZE*2);
 	HAL_TIM_Base_Start(&htim2);
 
 
@@ -1338,7 +1341,6 @@ void StartAdcTask(void *argument)
 
 		cc_voltage = 0;
 		cc_current = 0;
-		j = 0;
 
 		m_udtEnergyDataCalcs.pot_ativa = 0;
 		m_udtEnergyDataCalcs.pot_aparente = 0;
@@ -1354,65 +1356,69 @@ void StartAdcTask(void *argument)
 			i = H_BUFFER_SIZE;
 		}
 
+		j = 0;
 		for(uint16_t c = i; c < (H_BUFFER_SIZE + i); c++){
 				// Extrai os 16 bits menos significativos
-				adc1_voltage[j] = (((uint32_t)(adcBuffer[c].bits32 & 0x0000FFFF)) * V1_SENSOR_MULT * V1_REAL_MULT);
+				adc1_voltage[j] = (((float)(adcBuffer[c].bits32 & 0x0000FFFF)) * V1_SENSOR_MULT * V1_REAL_MULT);
 
 				cc_voltage += adc1_voltage[j];
 
 				// Extrai os 16 bits mais significativos
-				adc2_current[j] = (((uint32_t)((adcBuffer[c].bits32 >> 16) & 0x0000FFFF)) * C2_SENSOR_MULT * C2_REAL_MULT);
+				adc2_current[j] = (((float)((adcBuffer[c].bits32 >> 16) & 0x0000FFFF)) * C2_SENSOR_MULT * C2_REAL_MULT);
 
 				cc_current += adc2_current[j];
 
 				j++;
 		}
 
-		cc_voltage /= H_BUFFER_SIZE;
-		cc_current /= H_BUFFER_SIZE;
+		cc_voltage /= (float)H_BUFFER_SIZE;
+		cc_current /= (float)H_BUFFER_SIZE;
 
+		float rms_voltage = 0.0;
+		float rms_current = 0.0;
 		for(uint16_t c = 0; c < H_BUFFER_SIZE; c++){
-			m_udtEnergyDataCalcs.rms_voltage += (int32_t)((adc1_voltage[c] - cc_voltage) * (adc1_voltage[c] - cc_voltage));
-			m_udtEnergyDataCalcs.rms_current += (int32_t)((adc2_current[c] - cc_current) * (adc2_current[c] - cc_current));
+			rms_voltage += (adc1_voltage[c] - cc_voltage) * (adc1_voltage[c] - cc_voltage);
+			rms_current += (adc2_current[c] - cc_current) * (adc2_current[c] - cc_current);
 		}
 
-		m_udtEnergyDataCalcs.rms_voltage = (sqrtf((uint32_t)(m_udtEnergyDataCalcs.rms_voltage/H_BUFFER_SIZE)))*10;
-		m_udtEnergyDataCalcs.rms_current = (sqrtf((uint32_t)(m_udtEnergyDataCalcs.rms_current/H_BUFFER_SIZE)))*100;
+		rms_voltage /= (float)H_BUFFER_SIZE;
+		rms_voltage = sqrtf(rms_voltage);
+		rms_current /= (float)H_BUFFER_SIZE;
+		rms_current = sqrtf(rms_current);
 
-		if ((m_udtEnergyDataCalcs.rms_voltage) < MIN_RMS_VOLTAGE)
-		{
-			m_udtEnergyDataCalcs.rms_voltage = 0;
-		}
+		m_udtEnergyDataCalcs.rms_voltage = (uint32_t)(rms_voltage*10.0);
+		m_udtEnergyDataCalcs.rms_current = (uint32_t)(rms_current*100.0);
 
+		//if ((m_udtEnergyDataCalcs.rms_voltage) < MIN_RMS_VOLTAGE)
+		//{
+		//	m_udtEnergyDataCalcs.rms_voltage = 0;
+		//}
+
+		float pot_ativa = 0.0;
 		if ((m_udtEnergyDataCalcs.rms_current > 0 && m_udtEnergyDataCalcs.rms_voltage > 0))
 		{
 			for(uint16_t c = 0; c < H_BUFFER_SIZE; c++){
-				m_udtEnergyDataCalcs.pot_ativa += (int32_t)((adc2_current[c] - cc_current) * (adc1_voltage[c] - cc_voltage));
+				pot_ativa += (adc2_current[c] - cc_current) * (adc1_voltage[c] - cc_voltage);
 			}
 		}
 
-		m_udtEnergyDataCalcs.pot_ativa = (m_udtEnergyDataCalcs.pot_ativa / H_BUFFER_SIZE)*100;
+		pot_ativa /= (float)H_BUFFER_SIZE;
+		pot_ativa = fabsf(pot_ativa);
+		pot_ativa = sqrtf(pot_ativa);
+		m_udtEnergyDataCalcs.pot_ativa = (uint32_t)(pot_ativa*100.0);
 
+		float pot_aparente = 0.0;
 		if ((m_udtEnergyDataCalcs.rms_voltage * m_udtEnergyDataCalcs.rms_current) > 0)
 	    {
-			m_udtEnergyDataCalcs.pot_aparente = (uint32_t)((m_udtEnergyDataCalcs.rms_voltage * m_udtEnergyDataCalcs.rms_current))/10;
+			pot_aparente = rms_voltage * rms_current;
+			m_udtEnergyDataCalcs.pot_aparente = (uint32_t)(pot_aparente * 100.0);
 	    }
 
+		float pot_reativa = 0.0;
 		if ((m_udtEnergyDataCalcs.pot_aparente > 0) && (m_udtEnergyDataCalcs.pot_ativa > 0))
 		{
-			m_udtEnergyDataCalcs.pot_ativa = m_udtEnergyDataCalcs.pot_ativa/10;
-			m_udtEnergyDataCalcs.pot_aparente = m_udtEnergyDataCalcs.pot_aparente/10;
-
-			if ((m_udtEnergyDataCalcs.pot_aparente > 0) && (m_udtEnergyDataCalcs.pot_ativa > 0))
-			{
-				m_udtEnergyDataCalcs.pot_reativa = ((m_udtEnergyDataCalcs.pot_aparente * m_udtEnergyDataCalcs.pot_aparente) / 10)-((m_udtEnergyDataCalcs.pot_ativa * m_udtEnergyDataCalcs.pot_ativa) / 10);
-			}
-
-		}
-
-		if(m_udtEnergyDataCalcs.pot_reativa > 0)
-	    {
-			m_udtEnergyDataCalcs.pot_reativa = sqrtf((uint32_t)m_udtEnergyDataCalcs.pot_reativa);
+			pot_reativa = sqrtf((pot_aparente * pot_aparente) - (pot_ativa * pot_ativa));
+			m_udtEnergyDataCalcs.pot_reativa = (uint32_t)(pot_reativa * 100.0);
 		}
 
 		if ((m_udtEnergyDataCalcs.pot_ativa > 0) && (m_udtEnergyDataCalcs.pot_aparente > 0))
@@ -1432,7 +1438,7 @@ void StartAdcTask(void *argument)
 			cycle_count = 0;
 		}
 
-		#if 0
+		#if 1
 		pot_ativa1 = m_udtEnergyDataCalcs.pot_ativa;
 		pot_aparente1 = m_udtEnergyDataCalcs.pot_aparente;
 		pot_reativa1 = m_udtEnergyDataCalcs.pot_reativa;
@@ -1441,13 +1447,13 @@ void StartAdcTask(void *argument)
 		pf1 = m_udtEnergyDataCalcs.pf;
 		consumption1 = m_udtEnergyDataCalcs.consumption;
 		#else
-		m_udtEnergyDataCalcs.pot_ativa = 900;
-		m_udtEnergyDataCalcs.pot_aparente = 1000;
-		m_udtEnergyDataCalcs.pot_reativa = 100;
-		m_udtEnergyDataCalcs.rms_voltage = 127;
-		m_udtEnergyDataCalcs.rms_current = 78;
-		m_udtEnergyDataCalcs.pf = 90;
-		m_udtEnergyDataCalcs.consumption = 100;
+		m_udtEnergyDataCalcs.pot_ativa = 9000 + cycle_count;
+		m_udtEnergyDataCalcs.pot_aparente = 10000;
+		m_udtEnergyDataCalcs.pot_reativa = 1000;
+		m_udtEnergyDataCalcs.rms_voltage = 1270;
+		m_udtEnergyDataCalcs.rms_current = 780;
+		m_udtEnergyDataCalcs.pf = 900;
+		m_udtEnergyDataCalcs.consumption = 10000;
 		#endif
 
 
