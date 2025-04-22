@@ -1419,10 +1419,13 @@ void StartAdcTask(void *argument)
 		accumulated_active_power += (m_udtEnergyDataCalcs.pot_ativa);
 		cycle_count++;
 
-		if (cycle_count >= 60)
+		if (cycle_count >= 3600)
 		{
 
-			m_udtEnergyDataCalcs.consumption += accumulated_active_power/3600;
+			m_udtEnergyDataCalcs.consumption += accumulated_active_power/(216000*100);
+			if ((accumulated_active_power % (216000*100)) > 10800001) {
+				m_udtEnergyDataCalcs.consumption++;
+			}
 
 			accumulated_active_power = 0;
 			cycle_count = 0;
