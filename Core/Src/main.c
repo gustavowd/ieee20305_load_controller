@@ -95,11 +95,13 @@ typedef struct _ENERGY_DATA
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define V1_SENSOR_MULT	0.000837696335f//0.996551//Encontra a tensão da Saída do Sensor x100
-#define V1_REAL_MULT 	789.1033381f//808.1496160//63.37024//Encontra a tensão de entrada do Sensor  x100
+#define ADC_RESOLUTION	0.0008056641//0.000837696335f//0.996551//Encontra a tensão da Saída do Sensor x100
+#define V_SENSIBILITY 	412.0//789.1033381f//808.1496160//63.37024//Encounter a tensão de entrada do Sensor  x100
+#define V_GAIN			ADC_RESOLUTION * V_SENSIBILITY
 
-#define C2_SENSOR_MULT	0.000878232758f//0.362903//Encontra a tensão da Saída do Sensor x100
-#define C2_REAL_MULT	23.10292756f//5.4691//Encontra a Corrente de entrada do Sensor  x100
+//#define C2_SENSOR_MULT	0.0008056641//0.000878232758f//0.362903//Encontra a tensão da Saída do Sensor x100
+#define A_SENSIBILITY	15.15f//5.4691//Encontra a Corrente de entrada do Sensor  x100
+#define A_GAIN			ADC_RESOLUTION * A_SENSIBILITY
 
 #define F_BUFFER_SIZE	256
 #define H_BUFFER_SIZE	128
@@ -1359,12 +1361,12 @@ void StartAdcTask(void *argument)
 		j = 0;
 		for(uint16_t c = i; c < (H_BUFFER_SIZE + i); c++){
 				// Extrai os 16 bits menos significativos
-				adc1_voltage[j] = (((float)(adcBuffer[c].bits32 & 0x0000FFFF)) * V1_SENSOR_MULT * V1_REAL_MULT);
+				adc1_voltage[j] = (float)adcBuffer[c].bits16[0];
 
 				cc_voltage += adc1_voltage[j];
 
 				// Extrai os 16 bits mais significativos
-				adc2_current[j] = (((float)((adcBuffer[c].bits32 >> 16) & 0x0000FFFF)) * C2_SENSOR_MULT * C2_REAL_MULT);
+				adc2_current[j] = (float)adcBuffer[c].bits16[1];
 
 				cc_current += adc2_current[j];
 
@@ -1376,35 +1378,23 @@ void StartAdcTask(void *argument)
 
 		float rms_voltage = 0.0;
 		float rms_current = 0.0;
+		float pot_ativa = 0.0;
 		for(uint16_t c = 0; c < H_BUFFER_SIZE; c++){
 			rms_voltage += (adc1_voltage[c] - cc_voltage) * (adc1_voltage[c] - cc_voltage);
 			rms_current += (adc2_current[c] - cc_current) * (adc2_current[c] - cc_current);
+			pot_ativa += (adc2_current[c] - cc_current) * (adc1_voltage[c] - cc_voltage);
 		}
 
 		rms_voltage /= (float)H_BUFFER_SIZE;
-		rms_voltage = sqrtf(rms_voltage);
+		rms_voltage = sqrtf(rms_voltage) * V_GAIN;
 		rms_current /= (float)H_BUFFER_SIZE;
-		rms_current = sqrtf(rms_current);
+		rms_current = sqrtf(rms_current) * A_GAIN;
 
 		m_udtEnergyDataCalcs.rms_voltage = (uint32_t)(rms_voltage*10.0);
 		m_udtEnergyDataCalcs.rms_current = (uint32_t)(rms_current*100.0);
 
-		//if ((m_udtEnergyDataCalcs.rms_voltage) < MIN_RMS_VOLTAGE)
-		//{
-		//	m_udtEnergyDataCalcs.rms_voltage = 0;
-		//}
-
-		float pot_ativa = 0.0;
-		if ((m_udtEnergyDataCalcs.rms_current > 0 && m_udtEnergyDataCalcs.rms_voltage > 0))
-		{
-			for(uint16_t c = 0; c < H_BUFFER_SIZE; c++){
-				pot_ativa += (adc2_current[c] - cc_current) * (adc1_voltage[c] - cc_voltage);
-			}
-		}
-
 		pot_ativa /= (float)H_BUFFER_SIZE;
-		pot_ativa = fabsf(pot_ativa);
-		pot_ativa = sqrtf(pot_ativa);
+		pot_ativa = fabsf(pot_ativa) * V_GAIN * A_GAIN;
 		m_udtEnergyDataCalcs.pot_ativa = (uint32_t)(pot_ativa*100.0);
 
 		float pot_aparente = 0.0;
