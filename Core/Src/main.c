@@ -179,6 +179,7 @@ const osSemaphoreAttr_t uartBinSema_attributes = {
   .name = "uartBinSema"
 };
 /* USER CODE BEGIN PV */
+#if 0
 int32_t pot_ativa1 = 0;
 uint32_t pot_aparente1 = 0;
 uint32_t pot_reativa1 = 0;
@@ -186,6 +187,7 @@ int32_t rms_voltage1 = 0;
 int32_t rms_current1 = 0;
 uint16_t pf1 = 0;
 uint64_t consumption1 = 0;
+#endif
 
 typedef union type_ {
 	uint32_t bits32;
@@ -1321,13 +1323,14 @@ void StartAdcTask(void *argument)
 {
   /* USER CODE BEGIN StartAdcTask */
 	uint32_t accumulated_active_power = 0;
-	uint16_t cycle_count = 0;
 
 	float cc_voltage = 0;
 	float cc_current = 0;
-	uint8_t sidebuffer_choice = 0;
 	uint16_t i = 0;
 	uint16_t j = 0;
+	uint16_t cycle_count = 0;
+	uint8_t sidebuffer_choice = 0;
+	uint64_t accumulated_consumption = 0;
 
 	ENERGY_DATA m_udtEnergyDataCalcs;
 	m_udtEnergyDataCalcs.consumption = 0;
@@ -1419,19 +1422,15 @@ void StartAdcTask(void *argument)
 		accumulated_active_power += (m_udtEnergyDataCalcs.pot_ativa);
 		cycle_count++;
 
-		if (cycle_count >= 3600)
+		if (cycle_count >= 60)
 		{
-
-			m_udtEnergyDataCalcs.consumption += accumulated_active_power/(216000*100);
-			if ((accumulated_active_power % (216000*100)) > 10800001) {
-				m_udtEnergyDataCalcs.consumption++;
-			}
-
+			accumulated_consumption += (uint64_t)(accumulated_active_power/216000);
+			m_udtEnergyDataCalcs.consumption = accumulated_consumption / 100;
 			accumulated_active_power = 0;
 			cycle_count = 0;
 		}
 
-		#if 1
+		#if 0
 		pot_ativa1 = m_udtEnergyDataCalcs.pot_ativa;
 		pot_aparente1 = m_udtEnergyDataCalcs.pot_aparente;
 		pot_reativa1 = m_udtEnergyDataCalcs.pot_reativa;
@@ -1439,7 +1438,8 @@ void StartAdcTask(void *argument)
 		rms_current1 = m_udtEnergyDataCalcs.rms_current;
 		pf1 = m_udtEnergyDataCalcs.pf;
 		consumption1 = m_udtEnergyDataCalcs.consumption;
-		#else
+		#endif
+		#if 0
 		m_udtEnergyDataCalcs.pot_ativa = 9000 + cycle_count;
 		m_udtEnergyDataCalcs.pot_aparente = 10000;
 		m_udtEnergyDataCalcs.pot_reativa = 1000;
